@@ -52,9 +52,9 @@ nav button.on{color:var(--pr);font-weight:700}
 <script>
 var DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 var S={customers:[],settings:{fixedName:'',fixedTime:'12:00',fixedDur:60,start:'09:00',max:7,visitDur:40},schedule:{date:'',ids:[]}};
-var cur=0,editId=null,q='',pendLoc=null,locTried=false,doneId=null,pdfMsg='',acctId=null,entType=null,salesF='all',entPre=null,invMsg='',bkMsg='',entBlob=null,salesM='',editEntId=null,saving=false,stmtFrom='',stmtTo='';
+var cur=0,editId=null,q='',pendLoc=null,locTried=false,doneId=null,pdfMsg='',acctId=null,entType=null,salesF='all',entPre=null,invMsg='',bkMsg='',entBlob=null,salesM='',editEntId=null,saving=false,stmtFrom='',stmtTo='',histDay='';
 try{var raw=localStorage.getItem('visits_v1');if(raw){var p=JSON.parse(raw);if(p&&p.customers)S=Object.assign(S,p);S.settings=Object.assign({fixedName:'',fixedTime:'12:00',fixedDur:60,start:'09:00',max:7,visitDur:40},S.settings)}}catch(e){}
-S.settings=Object.assign({company:'Gusto Limited Company',agent:'ISLAM GAD',currency:'د.ك'},S.settings);S.log=S.log||{};S.ledger=S.ledger||[];
+S.settings=Object.assign({company:'Gusto Limited Company',agent:'ISLAM GAD',currency:'د.ك'},S.settings);S.log=S.log||{};S.ledger=S.ledger||[];S.history=S.history||{};if(S.schedule&&S.schedule.date&&!S.history[S.schedule.date])S.history[S.schedule.date]=(S.schedule.ids||[]).slice();
 function lsSave(){try{localStorage.setItem('visits_v1',JSON.stringify(S))}catch(e){}}
 function syText(){return '💾 البيانات محفوظة على جهازك'}
 function setSy(){}
@@ -109,7 +109,7 @@ function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 function mins(t){var a=(t||'0:0').split(':');return (+a[0])*60+(+a[1]||0)}
 function fmt(m){var h=Math.floor(m/60)%24,mm=m%60,ap=h>=12?'م':'ص',h12=h%12||12;return h12+':'+String(mm).padStart(2,'0')+' '+ap}
 function byId(id){return S.customers.find(function(c){return c.id===id})}
-function tab(n){acctId=null;entType=null;entPre=null;entBlob=null;editEntId=null;doneId=null;cur=n;editId=null;pendLoc=null;locTried=false;render()}
+function tab(n){histDay='';acctId=null;entType=null;entPre=null;entBlob=null;editEntId=null;doneId=null;cur=n;editId=null;pendLoc=null;locTried=false;render()}
 
 var geoMsg='';
 function setMsg(m){geoMsg=m;var e=document.getElementById('gm');if(e)e.textContent=m}
@@ -129,7 +129,7 @@ function generate(){
     while(rest.length){var l=route[route.length-1],bi=0;rest.forEach(function(c,i){if(dist(l,c)<dist(l,rest[bi]))bi=i});route.push(rest.splice(bi,1)[0])}
     ids=route.map(function(c){return c.id});
   }
-  S.schedule={date:t,ids:ids};save();render();
+  S.schedule={date:t,ids:ids};syncHist();save();render();
 }
 
 function timeline(){
@@ -146,10 +146,10 @@ function timeline(){
   return out;
 }
 
-function vToday(){
+function vToday0(){
   var d=new Date(),dow=d.getDay(),h='';
   h+='<h1>جدول اليوم</h1><div class="sub">'+DAYS[dow]+' — '+d.toLocaleDateString('ar-EG')+(dow>4?' (إجازة)':'')+'</div>';
-  h+='<button class="btn pri full" onclick="generate()">'+(S.schedule.date===today()?'🔄 اعمل جدول جديد':'✨ اعمل جدول النهارده')+'</button>';
+  h+='<button class="btn pri full" onclick="generate()">'+(S.schedule.date===today()?'🔄 اعمل جدول جديد':'✨ اعمل جدول النهارده')+'</button>'+(S.customers.length?'<button class="btn full" onclick="openPicker(\'add\')">➕ إضافة زيارة لعميل</button>':'');
   var tids=S.schedule.date===today()?S.schedule.ids.filter(byId):[];
   if(tids.length){
     var alld=tids.every(function(i){return byId(i).last===today()});
@@ -168,7 +168,7 @@ function vToday(){
     h+='<a class="btn sm" target="_blank" rel="noopener" href="https://maps.apple.com/?'+(c.gps?'ll='+c.lat+','+c.lng+'&q='+encodeURIComponent(c.name):'q='+encodeURIComponent((c.address||c.name)+' '+(c.area||'')))+'">🗺️ الخريطة</a>';
     h+='<button class="sm" onclick="openAcct(\''+c.id+'\')">🧾 الحساب</button>';
     if(dn)h+='<button class="sm" onclick="openDone(\''+c.id+'\')">✏️ تعديل</button><button class="sm" onclick="toggleDone(\''+c.id+'\')">↩️ إلغاء</button>';
-    else h+='<button class="sm pri" onclick="openDone(\''+c.id+'\')">✅ تمت الزيارة</button>';
+    else{h+='<button class="sm pri" onclick="openDone(\''+c.id+'\')">✅ تمت الزيارة</button>';h+='<button class="sm" onclick="openPicker(\'replace\',\''+c.id+'\')">🔁 استبدال</button><button class="sm" onclick="removeVisit(\''+c.id+'\')">🗑️ إزالة</button>'}
     h+='</div>';
     var lg=(S.log[today()]||{})[c.id];
     var bl=bal(c.id);if(bl!==0||hasLedger(c.id))h+='<div class="ad">'+(bl>0?'💳 عليه مديونية: '+money(bl):bl<0?'له رصيد: '+money(-bl):'✅ حسابه خالص')+'</div>';
@@ -334,7 +334,7 @@ function restore(inp){
       if(!d.customers.every(function(c){return idok.test(c.id)})||!L.every(function(e){return idok.test(e.id)&&idok.test(e.cid)&&isFinite(e.amount)})||!Object.keys(d.images||{}).every(function(k){return idok.test(k)}))throw 0;
       if(!(await ask('هيتم استبدال كل البيانات الحالية بالنسخة دي ('+d.customers.length+' عميل). متأكد؟','استبدل')))return;
       S=Object.assign({customers:[],settings:S.settings,schedule:{date:'',ids:[]},log:{},ledger:[]},d);
-      S.settings=Object.assign({company:'Gusto Limited Company',agent:'ISLAM GAD',currency:'د.ك'},S.settings);S.log=S.log||{};S.ledger=S.ledger||[];
+      S.settings=Object.assign({company:'Gusto Limited Company',agent:'ISLAM GAD',currency:'د.ك'},S.settings);S.log=S.log||{};S.ledger=S.ledger||[];S.history=S.history||{};if(S.schedule&&S.schedule.date&&!S.history[S.schedule.date])S.history[S.schedule.date]=(S.schedule.ids||[]).slice();
       var im=S.images||{};delete S.images;for(var kk in im){try{await imgPut(kk,await (await fetch(im[kk])).blob())}catch(e){}}
       save();setBm('تم الاسترجاع ✅ ('+S.customers.length+' عميل)');
     }catch(e){setBm('الملف ده مش نسخة احتياطية صحيحة.')}
@@ -460,9 +460,16 @@ function saveDone(id){
   c.last=today();if(ct)c.contact=ct;if(ps)c.position=ps;save();doneId=null;render();
 }
 function setPm(m){pdfMsg=m;var e=document.getElementById('pm');if(e)e.textContent=m}
-function reportHtml(){
-  var t=today(),d=new Date(),ds=d.getDate()+' '+d.toLocaleString('en-GB',{month:'short'})+' '+d.getFullYear();
-  var ids=S.schedule.date===t?S.schedule.ids.filter(byId):[],lgd=S.log[t]||{};
+function dayRows(date){
+  var ids=[],seen={},lg=S.log[date]||{};
+  var hs=date===S.schedule.date?(S.schedule.ids||[]):(S.history[date]||[]);
+  hs.forEach(function(id){if(byId(id)&&!seen[id]){seen[id]=1;ids.push(id)}});
+  Object.keys(lg).forEach(function(id){if(byId(id)&&!seen[id]){seen[id]=1;ids.push(id)}});
+  return ids.map(function(id){return {c:byId(id),l:lg[id],done:!!lg[id]}});
+}
+function reportHtml(date){
+  date=date||today();var d=new Date(date+'T00:00:00'),ds=d.getDate()+' '+d.toLocaleString('en-GB',{month:'short'})+' '+d.getFullYear();
+  var rows=dayRows(date);
   var bd='border:1.5px solid #000;',td='style="'+bd+'padding:7px 8px;font-size:15px;text-align:center" dir="auto"';
   var h='<div style="font-family:Arial,Tahoma,sans-serif;color:#000;background:#fff;padding:0">';
   h+='<div style="'+bd+'text-align:center;font-size:24px;font-weight:700;padding:16px">'+esc(S.settings.company)+' Daily Plan</div>';
@@ -471,21 +478,21 @@ function reportHtml(){
   h+='<table style="width:100%;border-collapse:collapse;direction:ltr"><tr>';
   ['S.No.','Company Name','Area','Name/ Position','Phone Number','Remarks'].forEach(function(x){h+='<th style="'+bd+'padding:10px;font-size:15px">'+x+'</th>'});
   h+='</tr>';
-  ids.forEach(function(id,i){
-    var c=byId(id),l=lgd[id],dn=c.last===t;
+  rows.forEach(function(r,i){
+    var c=r.c,l=r.l,dn=r.done;
     h+='<tr><td '+td+'>'+(i+1)+'</td><td '+td+'>'+esc(c.name)+'</td><td '+td+'>'+esc(c.area||c.zone||'')+'</td><td '+td+'>'+esc([(l&&l.contact)||c.contact||'',(l&&l.pos)||c.position||''].filter(Boolean).join(' / '))+'</td><td '+td+' dir="ltr">'+esc(c.phone)+'</td><td '+td+'>'+(dn?esc((l&&l.note)||'تمت الزيارة'):'لم تتم الزيارة')+'</td></tr>';
   });
   return h+'</table></div>';
 }
-async function makePdf(){
-  var ids=S.schedule.date===today()?S.schedule.ids.filter(byId):[];
-  if(!ids.length){setPm('مفيش زيارات النهارده.');return}
+async function makePdf(date){
+  date=(typeof date==='string'&&date)||today();
+  if(!dayRows(date).length){setPm('مفيش زيارات في اليوم ده.');return}
   if(!window.html2canvas||!window.jspdf){setPm('مكتبة الـ PDF ما اتحمّلتش. اتأكد من الإنترنت وجرّب تاني.');return}
   var dl=DL;
   if(!dl){setPm('حفظ الملفات مش متاح هنا. جرّب تفتح الصفحة من Safari.');return}
   setPm('جاري تجهيز الملف…');
   var el=document.createElement('div');el.style.cssText='position:fixed;left:-10000px;top:0;width:1100px;background:#fff;color:#000';
-  el.innerHTML=reportHtml();document.body.appendChild(el);
+  el.innerHTML=reportHtml(date);document.body.appendChild(el);
   try{
     var cv=await html2canvas(el,{scale:2,backgroundColor:'#ffffff'});
     var pdf=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
@@ -496,12 +503,72 @@ async function makePdf(){
       if(!first)pdf.addPage();first=false;
       pdf.addImage(pc.toDataURL('image/jpeg',0.92),'JPEG',m,m,iw,hh*sc);y+=hh;
     }
-    await dl.save({filename:'Daily-Plan-'+today()+'.pdf',data:pdf.output('blob')});
+    await dl.save({filename:'Daily-Plan-'+date+'.pdf',data:pdf.output('blob')});
     setPm('تم تجهيز الملف ✅');
   }catch(e){setPm(e&&e.code==='declined'?'اتلغى الحفظ.':'حصلت مشكلة في تجهيز الملف، جرّب تاني.')}
   finally{el.remove()}
 }
 
+function syncHist(){if(S.schedule&&S.schedule.date)S.history[S.schedule.date]=(S.schedule.ids||[]).slice()}
+function ensureToday(){if(S.schedule.date!==today())S.schedule={date:today(),ids:[]}}
+function removeVisit(id){ensureToday();S.schedule.ids=S.schedule.ids.filter(function(x){return x!==id});syncHist();save();render()}
+function pickCustomer(mode,target,id,openDn){
+  ensureToday();var ids=S.schedule.ids;
+  if(mode==='replace'){var i=ids.indexOf(target);if(i>=0)ids[i]=id;else ids.push(id)}else ids.push(id);
+  if(openDn)doneId=id;
+  syncHist();save();render();
+}
+function openPicker(mode,target){
+  ensureToday();
+  var inS={};S.schedule.ids.forEach(function(i){inS[i]=1});
+  var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:var(--bg);color:var(--tx);z-index:100;overflow:auto;padding:14px;padding-top:calc(14px + env(safe-area-inset-top,0px))';
+  var w=document.createElement('div');w.style.cssText='max-width:560px;margin:0 auto';
+  var hd=document.createElement('div');hd.className='row';hd.style.cssText='justify-content:space-between;margin-bottom:10px';
+  var t=document.createElement('h1');t.style.margin='0';t.textContent=mode==='replace'?'استبدال بعميل تاني':'إضافة زيارة';
+  var x=document.createElement('button');x.textContent='✕ إغلاق';x.onclick=function(){d.remove()};
+  hd.appendChild(t);hd.appendChild(x);
+  var inp=document.createElement('input');inp.placeholder='🔍 بحث بالاسم أو المنطقة';
+  var lst=document.createElement('div');
+  function draw(){
+    lst.innerHTML='';var k=inp.value.trim().toLowerCase();
+    var a=S.customers.filter(function(c){return !inS[c.id]&&(!k||((c.name||'')+' '+(c.area||'')+' '+(c.address||'')).toLowerCase().indexOf(k)>=0)}).sort(function(a,b){return (a.area||'').localeCompare(b.area||'')||(a.name||'').localeCompare(b.name||'')});
+    if(!a.length){lst.innerHTML='<div class="empty">لا يوجد عملاء متاحين.</div>';return}
+    a.forEach(function(c){
+      var card=document.createElement('div');card.className='card';
+      card.innerHTML='<div class="row"><span class="nm">'+esc(c.name)+'</span>'+(c.area?'<span class="tag">'+esc(c.area)+'</span>':'')+'</div>'+(c.last?'<div class="ad">آخر زيارة: '+esc(dmy(c.last))+'</div>':'');
+      if(mode==='add'){
+        var r=document.createElement('div');r.className='row';
+        var b1=document.createElement('button');b1.className='sm';b1.textContent='➕ إضافة للجدول';b1.onclick=function(){d.remove();pickCustomer('add',null,c.id,false)};
+        var b2=document.createElement('button');b2.className='sm pri';b2.textContent='✅ زرته النهارده';b2.onclick=function(){d.remove();pickCustomer('add',null,c.id,true)};
+        r.appendChild(b1);r.appendChild(b2);card.appendChild(r);
+      }else card.onclick=function(){d.remove();pickCustomer('replace',target,c.id,false)};
+      lst.appendChild(card);
+    });
+  }
+  inp.oninput=draw;w.appendChild(hd);w.appendChild(inp);w.appendChild(lst);d.appendChild(w);document.body.appendChild(d);draw();
+}
+function histCard(){
+  var dates={};
+  Object.keys(S.log||{}).forEach(function(d){if(Object.keys(S.log[d]||{}).length)dates[d]=1});
+  Object.keys(S.history||{}).forEach(function(d){if((S.history[d]||[]).length)dates[d]=1});
+  var ds=Object.keys(dates).sort().reverse().slice(0,10);
+  var h='<div class="card" style="margin-top:16px"><div class="nm" style="margin-bottom:6px">📚 سجل الزيارات السابقة</div><label>اختار اليوم</label><input type="date" id="hd" value="'+today()+'"><button class="btn full" onclick="openHist(document.getElementById(\'hd\').value)">عرض زيارات اليوم ده</button>';
+  if(ds.length){h+='<div class="sub">آخر الأيام (تمت/المجدولة):</div><div class="days">';ds.forEach(function(d){var r=dayRows(d),n=r.filter(function(x){return x.done}).length;h+='<button class="sm" onclick="openHist(\''+d+'\')">'+esc(dmy(d))+' ('+n+'/'+r.length+')</button>'});h+='</div>'}
+  return h+'</div>';
+}
+function vToday(){return vToday0()+histCard()}
+function openHist(d){if(!/^\d{4}-\d{2}-\d{2}$/.test(d||''))return;histDay=d;render();window.scrollTo(0,0)}
+function vHist(){
+  var d=histDay,rows=dayRows(d),dow=new Date(d+'T00:00:00').getDay(),done=rows.filter(function(x){return x.done}).length;
+  var h='<button class="sm" onclick="histDay=\'\';render()">→ رجوع</button><h1 style="margin-top:12px">زيارات '+esc(dmy(d))+'</h1><div class="sub">'+DAYS[dow]+' — تمت '+done+' من '+rows.length+'</div>';
+  if(rows.length)h+='<button class="btn pri full" onclick="makePdf(histDay)">📄 اطلع تقرير اليوم ده PDF</button><div class="sub" id="pm">'+esc(pdfMsg)+'</div>';
+  else h+='<div class="empty">مفيش زيارات مسجلة في اليوم ده.</div>';
+  rows.forEach(function(x){
+    var c=x.c,l=x.l;
+    h+='<div class="card'+(x.done?' done':'')+'"><div class="row" style="justify-content:space-between"><span class="nm">'+esc(c.name)+'</span><span>'+(x.done?'✅ تمت':'❌ لم تتم')+'</span></div>'+(c.area?'<div class="ad">'+esc(c.area)+'</div>':'')+(x.done&&l?'<div class="ad">👤 '+esc([l.contact,l.pos].filter(Boolean).join(' / ')||'-')+(l.note?' — '+esc(l.note):'')+'</div>':'')+'</div>';
+  });
+  return h;
+}
 function vClients(){
   var h='<h1>العملاء ('+S.customers.length+')</h1><div class="sub" id="sy">'+syText()+'</div>';
   var c=editId&&editId!=='new'?byId(editId):{name:'',address:'',phone:'',area:'',contact:'',position:''};
@@ -568,7 +635,7 @@ function saveS(){
   save();tab(0);toast('تم الحفظ ✅');
 }
 function render(){
-  document.getElementById('app').innerHTML=acctId?vAcct():[vToday,vClients,vSet,vSales][cur]();
+  document.getElementById('app').innerHTML=acctId?vAcct():histDay?vHist():[vToday,vClients,vSet,vSales][cur]();
   for(var i=0;i<4;i++)document.getElementById('t'+i).className=i===cur?'on':'';
   if(cur===1&&!editId)list();
   hydrateImgs();
